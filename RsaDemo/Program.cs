@@ -13,7 +13,8 @@ namespace RsaDemo
         {
             //DataCertificateHelper.CopyPfxAndGetInfo();
             //DataCertificateHelper.RsaTest();
-            DataCertificateHelper.SubRsaTest();
+            //DataCertificateHelper.SubRsaTest();
+            DataCertificateHelper.CopyPfxAndGetInfo();
             Console.ReadKey();
         }
     }
