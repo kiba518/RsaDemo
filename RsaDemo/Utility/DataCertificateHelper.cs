@@ -159,6 +159,125 @@ namespace Utility
 
                 return Encoder.GetString(PlaiStream.ToArray());
             }
-        }  
+        }
+
+       
+
+        #region RSA使用无XML公钥生成RSACryptoServiceProvider，然后验证签名签名，java提供，未测试
+        /// <summary>
+        /// 通过公钥生成RSACryptoServiceProvider
+        /// </summary>
+        /// <param name="x509key"></param>
+        /// <returns></returns>
+        private static RSACryptoServiceProvider DecodeX509PublicKey(byte[] x509key)
+        {
+            byte[] SeqOID = { 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01 };
+
+            MemoryStream ms = new MemoryStream(x509key);
+            BinaryReader reader = new BinaryReader(ms);
+
+            if (reader.ReadByte() == 0x30)
+                ReadASNLength(reader); //skip the size
+            else
+                return null;
+
+            int identifierSize = 0; //total length of Object Identifier section
+            if (reader.ReadByte() == 0x30)
+                identifierSize = ReadASNLength(reader);
+            else
+                return null;
+
+            if (reader.ReadByte() == 0x06) //is the next element an object identifier?
+            {
+                int oidLength = ReadASNLength(reader);
+                byte[] oidBytes = new byte[oidLength];
+                reader.Read(oidBytes, 0, oidBytes.Length);
+
+                if (oidBytes.SequenceEqual(SeqOID) == false) //is the object identifier rsaEncryption PKCS#1?
+                    return null;
+
+                int remainingBytes = identifierSize - 2 - oidBytes.Length;
+                reader.ReadBytes(remainingBytes);
+            }
+
+            if (reader.ReadByte() == 0x03) //is the next element a bit string?
+            {
+                ReadASNLength(reader); //skip the size
+                reader.ReadByte(); //skip unused bits indicator
+                if (reader.ReadByte() == 0x30)
+                {
+                    ReadASNLength(reader); //skip the size
+                    if (reader.ReadByte() == 0x02) //is it an integer?
+                    {
+                        int modulusSize = ReadASNLength(reader);
+                        byte[] modulus = new byte[modulusSize];
+                        reader.Read(modulus, 0, modulus.Length);
+                        if (modulus[0] == 0x00) //strip off the first byte if it's 0
+                        {
+                            byte[] tempModulus = new byte[modulus.Length - 1];
+                            Array.Copy(modulus, 1, tempModulus, 0, modulus.Length - 1);
+                            modulus = tempModulus;
+                        }
+
+                        if (reader.ReadByte() == 0x02) //is it an integer?
+                        {
+                            int exponentSize = ReadASNLength(reader);
+                            byte[] exponent = new byte[exponentSize];
+                            reader.Read(exponent, 0, exponent.Length);
+
+                            RSACryptoServiceProvider RSA = new RSACryptoServiceProvider();
+                            RSAParameters RSAKeyInfo = new RSAParameters();
+                            RSAKeyInfo.Modulus = modulus;
+                            RSAKeyInfo.Exponent = exponent;
+                            RSA.ImportParameters(RSAKeyInfo);
+                            return RSA;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+        
+        private static int ReadASNLength(BinaryReader reader)
+        {
+            //Note: this method only reads lengths up to 4 bytes long as
+            //this is satisfactory for the majority of situations.
+            int length = reader.ReadByte();
+            if ((length & 0x00000080) == 0x00000080) //is the length greater than 1 byte
+            {
+                int count = length & 0x0000000f;
+                byte[] lengthBytes = new byte[4];
+                reader.Read(lengthBytes, 4 - count, count);
+                Array.Reverse(lengthBytes); //
+                length = BitConverter.ToInt32(lengthBytes, 0);
+            }
+            return length;
+        }
+
+        static String privateKey_NoXML = "MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAKWgQbuMfuRULwZz8O8EDD1sadzFeaGtrDfLSwY3saF4mk+mXP8RkG2ty6seDlf5KoLQj2t1eYPp6ViCcXmuJcKPMmqZojMHWKMhEcWeizEfa+zfEE6YK+Yf2YgQMQWmP7uJ58vhln3n0tZzZk+IUoIyQUIkURKZ02iGi3X1gSi/AgMBAAECgYEAi5kljjR/B2hFMoUqf+rDfkoQeDohqLo/O8+nbpgmqdiDB7tLCtn9B9TCo3nz0QZ8ZEHxgDtFrn/LZASeLFcyDwzsPyWnJPrgs3tbYuRu0OsvcGZs28S4J+bN7GL7DFRnTU5J0aa5MsQC09VPo9r2Ljlsp2hy9Y208bYECuaiT2ECQQDa35zUFcD15HFbEKDet4HXpVtne5SCODoLUPoBahm/qGDp0id8s6eHSgx9wzq7Mg7uVoIpjBqx4J9UFBejLmTZAkEAwbhrWEZ2Otdjr8hesMjhS7j7WOnQtDq079j8UTz+M0QVM9rNjhxOte5si8wGtaqzbVFFMDGxisiWQnc3RKobVwJAXAkHg08acst6txZI7x4vJSTNSLh4fEF0dum4Fvwsk6EUD35lSFSrL4J9uixr9+dWy/Xoidv2JbIUjWBdiCqsEQJAK4yW7TBh8dZr/Z9w0hNGuqwqLRHbLjkoZecEygqJJuM+VPryTOlGNJYV5tOGCp8GWSP1BuGVBRsU1HpSfWg0XwJAJD9Dbccs0fjg48i/4s1R8FVgCaTKP5+1pweKVgeKBwuvucIlMvkjUlyjxMYuRjMoIbXHUP6Me21iCOo494/psA==";
+        static String publicKey_NoXML = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCloEG7jH7kVC8Gc/DvBAw9bGncxXmhraw3y0sGN7GheJpPplz/EZBtrcurHg5X+SqC0I9rdXmD6elYgnF5riXCjzJqmaIzB1ijIRHFnosxH2vs3xBOmCvmH9mIEDEFpj+7iefL4ZZ959LWc2ZPiFKCMkFCJFESmdNohot19YEovwIDAQAB";
+
+        public static bool VerifySignature(string sign1, string sign2)
+        {
+            Byte[] byPkey = Convert.FromBase64String(publicKey_NoXML);
+            RSACryptoServiceProvider rsacp = DecodeX509PublicKey(byPkey); 
+            byte[] verify = Encoding.UTF8.GetBytes(sign1);
+            byte[] signature = Convert.FromBase64String(sign2);
+            bool ok = rsacp.VerifyData(verify, "SHA1", signature);
+            return ok;
+
+        }
+
+        //public static string Signature(string fnstr)
+        //{ 
+        //    RSACryptoServiceProvider rsacp = DecodeRSAPrivateKey(privateKey_NoXML);
+        //    byte[] data = Encoding.UTF8.GetBytes(fnstr);//待签名字符串转成byte数组，UTF8
+        //    byte[] byteSign = rsacp.SignData(data, "SHA1");//对应JAVA的RSAwithSHA256
+        //    string sign = Convert.ToBase64String(byteSign);//签名byte数组转为BASE64字符串
+
+        //    return sign; 
+
+        //}
+        #endregion
     }
 }
